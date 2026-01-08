@@ -235,7 +235,7 @@ function removeTypingIndicator() {
     }
 }
 
-// Send message to OpenAI
+// Send message to OpenAI via our secure internal proxy
 async function sendToOpenAI() {
     if (isTyping) return;
 
@@ -244,25 +244,22 @@ async function sendToOpenAI() {
     showTypingIndicator();
 
     try {
-        const response = await fetch(CONFIG.OPENAI_API_URL, {
+        const response = await fetch('/api/chat', {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${CONFIG.OPENAI_API_KEY}`
+                'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                model: CONFIG.MODEL,
-                messages: conversationHistory,
-                temperature: 0.7,
-                max_tokens: 500
+                messages: conversationHistory
             })
         });
 
+        const data = await response.json();
+
         if (!response.ok) {
-            throw new Error(`API Error: ${response.status} ${response.statusText}`);
+            throw new Error(data.error || `API Error: ${response.status}`);
         }
 
-        const data = await response.json();
         const assistantMessage = data.choices[0].message.content;
 
         removeTypingIndicator();
@@ -278,13 +275,17 @@ async function sendToOpenAI() {
         });
 
     } catch (error) {
-        console.error('Error calling OpenAI API:', error);
+        console.error('Error calling Proxy API:', error);
         removeTypingIndicator();
 
         // Show error message to user
-        const errorMessage = CONFIG.OPENAI_API_KEY === 'YOUR_OPENAI_API_KEY_HERE'
-            ? "Please add your OpenAI API key in the script.js file to enable chat functionality."
-            : "Sorry, I'm having trouble connecting right now. Please try again.";
+        let errorMessage = error.message;
+
+        if (errorMessage.includes('not configured')) {
+            errorMessage = "OpenAI API Key not configured on Vercel. Please add it to Settings -> Environment Variables in the Vercel dashboard.";
+        } else {
+            errorMessage = "Sorry, I'm having trouble connecting right now. Please check if your OpenAI key is added correctly to Vercel.";
+        }
 
         const bubble = addMessage('', 'assistant', true);
         const messageDiv = bubble.closest('.message');
